@@ -8,11 +8,21 @@ pipeline {
     }
 
     stages {
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
         stage('Checkout') {
             steps {
-                git credentialsId: 'fb7cfa46-83f2-465b-b866-1627b1966877', // GitHub token credential ID
-                    branch: 'main',
-                    url: 'https://github.com/nkiriazis/flask-app.git'
+                checkout([$class: 'GitSCM', 
+                    branches: [[name: 'refs/heads/main']], 
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/nkiriazis/flask-app.git', 
+                        credentialsId: 'fb7cfa46-83f2-465b-b866-1627b1966877'
+                    ]]
+                ])
             }
         }
 
@@ -30,7 +40,7 @@ pipeline {
             steps {
                 script {
                     def fullImageTag = "${DOCKER_REPOSITORY}:${BUILD_TAG}"
-                    docker.withRegistry('https://registry.hub.docker.com', '6970179e-8739-4f48-968d-fd404b31a95b') { // Docker Hub credentials ID
+                    docker.withRegistry('https://registry.hub.docker.com', '6970179e-8739-4f48-968d-fd404b31a95b') {
                         echo "Pushing Docker image: ${fullImageTag}"
                         docker.image(fullImageTag).push()
                     }

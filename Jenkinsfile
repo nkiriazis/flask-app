@@ -154,70 +154,34 @@ pipeline {
     agent any
 
     environment {
-        // Όνομα του Docker Image σου (χωρίς το Docker Hub username)
-        // Το Docker Hub username θα προστεθεί αυτόματα από το docker.withRegistry
-        DOCKER_IMAGE_NAME = "flask-app" // Προσαρμόστηκε για να ταιριάζει με το GitLab παράδειγμα (χωρίς returnick/)
-        DOCKER_REPOSITORY = "returnick/${DOCKER_IMAGE_NAME}" // Αυτό θα είναι το πλήρες repo path στο Docker Hub
-
-        // Μεταβλητές για build arguments
-        BUILD_ENVIRONMENT = "staging" // Default value
-        BUILD_API_VERSION = "${env.TAG_NAME ?: 'no-tag'}" // Χρησιμοποιεί το Git tag, αλλιώς 'no-tag'
+        IMAGE_NAME = "returnick/python-app"
+        IMAGE_TAG = "latest"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/nkiriazis/flask-app.git' // Βεβαιώσου ότι αυτό είναι το σωστό URL για το repo σου
+                git branch: 'main', url: 'https://github.com/nkiriazis/python-app.git'
             }
         }
 
-        stage('Determine Build Arguments') {
-            when { expression { return env.TAG_NAME != null } } // This stage only runs if triggered by a tag
+        stage('Build Docker Image') {
             steps {
                 script {
-                    if (env.TAG_NAME =~ /-prod$/) { // Έλεγχος αν το tag τελειώνει σε -prod
-                        echo "Git tag '${env.TAG_NAME}' detected. Setting build for PRODUCTION."
-                        env.BUILD_ENVIRONMENT = "production"
-                    } else {
-                        echo "Git tag '${env.TAG_NAME}' detected. Setting build for STAGING."
-                        env.BUILD_ENVIRONMENT = "staging"
-                    }
-                    env.BUILD_API_VERSION = env.TAG_NAME // API_VERSION είναι πάντα το Git tag
-                    echo "Environment for build: ${env.BUILD_ENVIRONMENT}"
-                    echo "API Version for build: ${env.BUILD_API_VERSION}"
-                }
-            }
-        }
-
-        stage('Build and Tag Docker Image') {
-            steps {
-                script {
-                    // Πλήρες tag για το image (π.χ. returnick/python-app:v1.0.0-prod)
-                    def fullImageTag = "${DOCKER_REPOSITORY}:${env.TAG_NAME}"
-
-                    echo "Building Docker image: ${fullImageTag}"
-                    docker.build(fullImageTag, """
-                        --no-cache
-                        --pull
-                        --build-arg ENVIRONMENT=${env.BUILD_ENVIRONMENT}
-                        --build-arg API_VERSION=${env.BUILD_API_VERSION}
-                        .
-                    """.stripIndent()) // Το stripIndent είναι για να αφαιρέσει τα κενά από το multi-line string
-
-                    echo "Image built and tagged: ${fullImageTag}"
+                    dockerImage = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
                 }
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
-                script {
-                    def fullImageTag = "${DOCKER_REPOSITORY}:${env.TAG_NAME}"
-                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-creds') { // Χρησιμοποιεί το Jenkins credential ID
-                        echo "Pushing Docker image: ${fullImageTag}"
-                        docker.image(fullImageTag).push() // Χρησιμοποιεί το image object για push
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    script {
+                        sh '''
+                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                            docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                        '''
                     }
-                    echo "Image pushed successfully."
                 }
             }
         }
@@ -225,19 +189,8 @@ pipeline {
 
     post {
         always {
-            echo 'Cleaning up Docker images on agent...'
-            script {
-                // Διαγράφουμε το image τοπικά μετά το push
-                def fullImageTag = "${DOCKER_REPOSITORY}:${env.TAG_NAME}"
-                sh "docker rmi ${fullImageTag} || true" // '|| true' για να μην κολλήσει αν δεν υπάρχει
-                echo "Local Docker image ${fullImageTag} removed."
-            }
-        }
-        failure {
-            echo 'Pipeline failed. Check logs for details.'
-        }
-        success {
-            echo 'Pipeline completed successfully!'
+            echo 'Cleaning up Docker credentials...'
+            sh 'docker logout || true'
         }
     }
 }

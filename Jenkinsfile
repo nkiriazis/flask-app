@@ -156,7 +156,7 @@ pipeline {
     environment {
         // Όνομα του Docker Image σου (χωρίς το Docker Hub username)
         // Το Docker Hub username θα προστεθεί αυτόματα από το docker.withRegistry
-        DOCKER_IMAGE_NAME = "python-app" // Προσαρμόστηκε για να ταιριάζει με το GitLab παράδειγμα (χωρίς returnick/)
+        DOCKER_IMAGE_NAME = "flask-app" // Προσαρμόστηκε για να ταιριάζει με το GitLab παράδειγμα (χωρίς returnick/)
         DOCKER_REPOSITORY = "returnick/${DOCKER_IMAGE_NAME}" // Αυτό θα είναι το πλήρες repo path στο Docker Hub
 
         // Μεταβλητές για build arguments

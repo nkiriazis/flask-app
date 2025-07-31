@@ -2,35 +2,37 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "returnick/flask-app"
-        IMAGE_TAG = "latest"
-        FULL_IMAGE = "${IMAGE_NAME}:${IMAGE_TAG}"
+        DOCKER_IMAGE_NAME = "flask-app"
+        DOCKER_REPOSITORY = "returnick/${DOCKER_IMAGE_NAME}"
+        BUILD_TAG = "${env.TAG_NAME ?: 'latest'}"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git credentialsId: '6970179e-8739-4f48-968d-fd404b31a95b', branch: 'main', url: 'https://github.com/nkiriazis/flask-app.git'
+                git credentialsId: 'fb7cfa46-83f2-465b-b866-1627b1966877', // GitHub token credential ID
+                    branch: 'main',
+                    url: 'https://github.com/nkiriazis/flask-app.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo "Building Docker image: ${FULL_IMAGE}"
-                    sh "docker build -t ${FULL_IMAGE} ."
+                    def fullImageTag = "${DOCKER_REPOSITORY}:${BUILD_TAG}"
+                    echo "Building Docker image: ${fullImageTag}"
+                    docker.build(fullImageTag, "--pull .")
                 }
             }
         }
 
-        stage('Push to Docker Hub') {
+        stage('Push Docker Image') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    script {
-                        sh '''
-                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                            docker push ${FULL_IMAGE}
-                        '''
+                script {
+                    def fullImageTag = "${DOCKER_REPOSITORY}:${BUILD_TAG}"
+                    docker.withRegistry('https://registry.hub.docker.com', '6970179e-8739-4f48-968d-fd404b31a95b') { // Docker Hub credentials ID
+                        echo "Pushing Docker image: ${fullImageTag}"
+                        docker.image(fullImageTag).push()
                     }
                 }
             }
@@ -39,11 +41,17 @@ pipeline {
 
     post {
         always {
-            echo 'Cleaning up Docker...'
-            sh '''
-                docker logout || true
-                docker rmi ${FULL_IMAGE} || true
-            '''
+            script {
+                def fullImageTag = "${DOCKER_REPOSITORY}:${BUILD_TAG}"
+                echo "Cleaning up local Docker image: ${fullImageTag}"
+                sh "docker rmi ${fullImageTag} || true"
+            }
+        }
+        success {
+            echo 'Build and push completed successfully!'
+        }
+        failure {
+            echo 'Build or push failed. Check logs.'
         }
     }
 }
